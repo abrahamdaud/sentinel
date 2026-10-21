@@ -1,63 +1,62 @@
 # SENTINEL
 
-SENTINEL adalah proyek keamanan lokal untuk Windows PowerShell dan Termux yang berjalan sepenuhnya secara offline. Aplikasi ini tidak memerlukan server, API, atau koneksi internet untuk aktif. Fokus utamanya adalah memonitor sistem lokal, mendeteksi proses mencurigakan, file yang berpotensi berbahaya, dan perubahan file sensitif secara otomatis.
+SENTINEL is a lightweight local security monitor designed for PowerShell and Termux. It runs completely offline and does not require any external server, API, or internet connection. The project is intended to monitor local system activity, detect suspicious processes, suspicious file patterns, and potential file tampering while staying low-overhead and non-intrusive.
 
-## Fitur utama
+## Key Features
 
-- Pemantauan proses lokal secara realtime
-- Deteksi proses yang mirip malware, rootkit, keylogger, trojan, atau alat remote control
-- Pemindaian berkas untuk pola mencurigakan pada nama atau path file
-- Deteksi perubahan file penting menggunakan snapshot SHA256 (anti-tamper)
-- Whitelist path agar folder tertentu tidak ikut dipindai
-- Mode stealth / silent yang lebih halus dan minim gangguan
-- TUI ringan untuk monitoring visual dengan refresh cepat
-- Logging lokal otomatis di folder ~/.sentinel/logs
-- Kompatibel dengan PowerShell dan Termux
+- Local process monitoring
+- Suspicious process detection
+- Suspicious file path/name detection
+- File hash snapshot and anti-tamper monitoring
+- Remote-control software detection
+- Whitelist support
+- Quiet stealth mode
+- Lightweight TUI dashboard
+- Local logging only
+- No external dependency
 
-## Arsitektur
+## Architecture
 
-Proyek ini terdiri dari 4 komponen utama:
+- `sentinel.ps1` — PowerShell implementation
+- `sentinel-native.sh` — Bash fallback implementation
+- `sentinel` — launcher
+- `install.sh` — installation and persistence setup
 
-- `sentinel.ps1` — versi utama berbasis PowerShell
-- `sentinel-native.sh` — versi fallback berbasis bash untuk Termux/Linux
-- `sentinel` — launcher otomatis yang memilih runtime yang tersedia
-- `install.sh` — installer yang menyalin launcher ke `~/.local/bin` dan menyiapkan struktur kerja
-
-## Prasyarat
+## Requirements
 
 ### Windows / PowerShell
 
 - Windows 10/11
-- PowerShell 7+ direkomendasikan
+- PowerShell 7+
 
 ### Termux / Android
 
-- Termux sudah terinstall
-- `pwsh` bila ingin memakai versi PowerShell
-- bila tidak ada `pwsh`, launcher akan otomatis memakai versi bash native
+- Termux installed
+- `pwsh` recommended for PowerShell mode
+- Native bash mode is also available
 
-## Instalasi otomatis
+## Installation
 
-Masuk ke folder project, lalu jalankan:
+From the project directory:
 
 ```bash
 chmod +x sentinel install.sh sentinel-native.sh
 ./install.sh
 ```
 
-Setelah itu, jalankan:
+Then:
 
 ```bash
 sentinel start
 ```
 
-Atau kalau Anda ingin menjalankan langsung dari folder project:
+Or run directly from the project folder:
 
 ```bash
 ./sentinel start
 ```
 
-## Cara penggunaan
+## Usage
 
 ### PowerShell
 
@@ -81,37 +80,60 @@ pwsh -File sentinel.ps1 stop
 ./sentinel stop
 ```
 
-## Mode stealth dan TUI
+## Stealth Mode and TUI
 
-SENTINEL dibuat untuk berjalan dengan karakteristik sebagai berikut:
+SENTINEL is designed to be quiet:
 
-- tidak mengirim data ke server luar
-- tidak memerlukan internet
-- output di terminal dibuat seminimal mungkin dalam mode stealth
-- monitoring dilakukan secara lokal dan ringan
-- TUI menampilkan status ringkas dengan refresh sekitar 60 FPS seperti tampilan dashboard teks
-- log tetap disimpan di file lokal agar audit tetap tersedia
+- minimal terminal output
+- logs saved locally only
+- alert only on meaningful changes
+- no external traffic
+- no cloud or API dependency
 
-## Konfigurasi
+The TUI is optimized for low overhead and fast refresh, aiming for smooth terminal updates without heavy CPU usage.
 
-Semua konfigurasi default dibuat otomatis di folder:
+## Configuration
+
+Default configuration is generated under:
 
 ```bash
 ~/.sentinel/
 ```
 
-File yang dibuat:
+Files generated:
 
-- `config.json` — pengaturan awal
-- `whitelist.txt` — path yang diabaikan
-- `state.json` — hasil scan terakhir
-- `tamper.json` — snapshot file untuk deteksi perubahan
-- `logs/sentinel.log` — riwayat log
+- `config.json`
+- `whitelist.txt`
+- `state.json`
+- `tamper.json`
+- `logs/sentinel.log`
 
-## Catatan keamanan
+## Startup Persistence
 
-Proyek ini dibuat untuk kebutuhan pemantauan dan deteksi lokal. Ia bukan alat antivirus komersial dan tidak menggantikan solusi keamanan profesional. Kegunaan utamanya adalah analisis, pemberitahuan, dan audit keamanan di mesin lokal.
+On Linux and Termux environments with `crontab` available, the install step adds a lightweight `@reboot` cron entry to start SENTINEL automatically when the device boots.
 
-## Lisensi
+## Release Checklist
+
+Before publishing or release, verify the following:
+
+- Installer works on target system
+- PATH is configured correctly
+- `sentinel start` runs without errors
+- `sentinel status` shows valid state
+- `sentinel scan` performs a local scan correctly
+- `sentinel stop` stops the monitor cleanly
+- `whitelist.txt` works as expected
+- stealth mode stays quiet and minimal
+- TUI remains responsive and does not consume excessive CPU
+- logs are written locally
+- no internet or external service dependency exists
+- startup persistence works where supported
+- no unsupported commands are causing runtime issues
+
+## Notes
+
+This project is intended as a local monitoring and awareness tool. It is not a full commercial antivirus solution and should be treated as a lightweight local security monitor, not a definitive endpoint protection platform.
+
+## License
 
 MIT
