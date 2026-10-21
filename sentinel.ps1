@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet('start','scan','status','stop','help')]
+    [ValidateSet('start','scan','status','stop','help','install','stealth','tui')]
     [string]$Command = 'status',
     [string[]]$Path = @()
 )
@@ -63,8 +63,10 @@ function Initialize-Sentinel {
         $cfg = [ordered]@{
             ScanInterval = 15
             SuspiciousWords = @('r57','mimikatz','meterpreter','backdoor','rootkit','keylog','dropper','ngrok','frp','proxychains','malware','trojan','stealer','adb','scrcpy','vnc','teamviewer','anydesk','exfil')
-            RemoteProcessNames = @('adb','scrcpy','vnc','tightvnc','teamviewer','anydesk','rdp','x11vnc')
+            RemoteProcessNames = @('adb','scrcpy','vnc','tightvnc','teamviewer','anydesk','rdp','x11vnc','mimikatz','meterpreter')
             Whitelist = @()
+            StealthMode = $true
+            TuiRefreshMs = 16
         }
         $cfg | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $script:ConfigFile -Encoding UTF8
     }
@@ -80,22 +82,20 @@ function Initialize-Sentinel {
 
 function Load-Config {
     Initialize-Sentinel
-    if (-not (Test-Path -LiteralPath $script:ConfigFile)) { return [pscustomobject]@{ ScanInterval = $script:DefaultScanInterval; SuspiciousWords = @(); RemoteProcessNames = @(); Whitelist = @() } }
+    if (-not (Test-Path -LiteralPath $script:ConfigFile)) {
+        return [pscustomobject]@{ ScanInterval = $script:DefaultScanInterval; SuspiciousWords = @(); RemoteProcessNames = @(); Whitelist = @(); StealthMode = $true; TuiRefreshMs = 16 }
+    }
 
     $data = Get-Content -LiteralPath $script:ConfigFile -Raw | ConvertFrom-Json
     $cfg = [ordered]@{
         ScanInterval = if ($null -ne $data.ScanInterval) { [int]$data.ScanInterval } else { $script:DefaultScanInterval }
-        SuspiciousWords = if ($null -ne $data.SuspiciousWords) { @($data.SuspiciousWords) } else { @() }
-        RemoteProcessNames = if ($null -ne $data.RemoteProcessNames) { @($data.RemoteProcessNames) } else { @() }
+        SuspiciousWords = if ($null -ne $data.SuspiciousWords) { @($data.SuspiciousWords) } else { @('r57','mimikatz','meterpreter','backdoor','rootkit','keylog','dropper','ngrok','frp','proxychains','malware','trojan','stealer','adb','scrcpy','vnc','teamviewer','anydesk','exfil') }
+        RemoteProcessNames = if ($null -ne $data.RemoteProcessNames) { @($data.RemoteProcessNames) } else { @('adb','scrcpy','vnc','tightvnc','teamviewer','anydesk','rdp','x11vnc','mimikatz','meterpreter') }
         Whitelist = if ($null -ne $data.Whitelist) { @($data.Whitelist) } else { @() }
+        StealthMode = if ($null -ne $data.StealthMode) { [bool]$data.StealthMode } else { $true }
+        TuiRefreshMs = if ($null -ne $data.TuiRefreshMs) { [int]$data.TuiRefreshMs } else { 16 }
     }
 
-    if ($cfg.SuspiciousWords.Count -eq 0) {
-        $cfg.SuspiciousWords = @('r57','mimikatz','meterpreter','backdoor','rootkit','keylog','dropper','ngrok','frp','proxychains','malware','trojan','stealer','adb','scrcpy','vnc','teamviewer','anydesk','exfil')
-    }
-    if ($cfg.RemoteProcessNames.Count -eq 0) {
-        $cfg.RemoteProcessNames = @('adb','scrcpy','vnc','tightvnc','teamviewer','anydesk','rdp','x11vnc')
-    }
     return [pscustomobject]$cfg
 }
 
@@ -128,11 +128,7 @@ function Get-DirectoryRoots {
 }
 
 function Test-IsWhitelisted {
-    param(
-        [string]$Path,
-        [string[]]$Whitelist
-    )
-
+    param([string]$Path, [string[]]$Whitelist)
     foreach ($entry in $Whitelist) {
         if ([string]::IsNullOrWhiteSpace($entry)) { continue }
         if ($Path.StartsWith($entry, [System.StringComparison]::OrdinalIgnoreCase)) {
@@ -144,7 +140,6 @@ function Test-IsWhitelisted {
 
 function Get-SuspiciousProcesses {
     param([object]$Config)
-
     $results = @()
     $keywords = @($Config.SuspiciousWords | ForEach-Object { $_.ToLowerInvariant() })
 
@@ -155,11 +150,7 @@ function Get-SuspiciousProcesses {
 
         foreach ($keyword in $keywords) {
             if ($combined.Contains($keyword)) {
-                $results += [pscustomobject]@{
-                    ProcessName = $name
-                    Path = $path
-                    Match = $keyword
-                }
+                $results += [pscustomobject]@{ ProcessName = $name; Path = $path; Match = $keyword }
                 break
             }
         }
@@ -169,35 +160,24 @@ function Get-SuspiciousProcesses {
 }
 
 function Get-SuspiciousFiles {
-    param(
-        [string[]]$Roots,
-        [object]$Config,
-        [string[]]$Whitelist
-    )
-
+    param([string[]]$Roots, [object]$Config, [string[]]$Whitelist)
     $results = @()
     $keywords = @($Config.SuspiciousWords | ForEach-Object { $_.ToLowerInvariant() })
 
     foreach ($root in $Roots) {
         if (-not (Test-Path -LiteralPath $root)) { continue }
-
         try {
             $items = Get-ChildItem -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
             foreach ($item in $items) {
                 if ($item.PSIsContainer) { continue }
                 $full = $item.FullName
                 if (Test-IsWhitelisted -Path $full -Whitelist $Whitelist) { continue }
-
                 $lowerName = $item.Name.ToLowerInvariant()
                 $lowerFull = $full.ToLowerInvariant()
 
                 foreach ($keyword in $keywords) {
                     if ($lowerName.Contains($keyword) -or $lowerFull.Contains($keyword)) {
-                        $results += [pscustomobject]@{
-                            Path = $full
-                            Match = $keyword
-                            Type = $item.GetType().Name
-                        }
+                        $results += [pscustomobject]@{ Path = $full; Match = $keyword; Type = $item.GetType().Name }
                         break
                     }
                 }
@@ -213,29 +193,26 @@ function Get-SuspiciousFiles {
 
 function Get-RemoteControlHits {
     param([object]$Config)
-
     $results = @()
     $names = @($Config.RemoteProcessNames | ForEach-Object { $_.ToLowerInvariant() })
+
     foreach ($proc in Get-Process -ErrorAction SilentlyContinue) {
         $name = [string]$proc.ProcessName
         $lower = $name.ToLowerInvariant()
         if ($names -contains $lower) {
-            $results += [pscustomobject]@{
-                ProcessName = $name
-                Path = if ($null -ne $proc.Path) { [string]$proc.Path } else { '' }
-            }
+            $results += [pscustomobject]@{ ProcessName = $name; Path = if ($null -ne $proc.Path) { [string]$proc.Path } else { '' } }
         }
     }
+
     return $results | Sort-Object ProcessName -Unique
 }
 
 function Capture-TamperSnapshot {
     param([string[]]$Roots, [string[]]$Whitelist)
-
     $snapshot = [ordered]@{}
+
     foreach ($root in $Roots) {
         if (-not (Test-Path -LiteralPath $root)) { continue }
-
         try {
             $items = Get-ChildItem -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
             foreach ($item in $items) {
@@ -255,12 +232,9 @@ function Capture-TamperSnapshot {
 }
 
 function Check-TamperChanges {
-    param(
-        [hashtable]$Previous,
-        [hashtable]$Current
-    )
-
+    param([hashtable]$Previous, [hashtable]$Current)
     $changes = @()
+
     foreach ($key in $Current.Keys) {
         if (-not $Previous.ContainsKey($key)) {
             $changes += $key
@@ -282,7 +256,6 @@ function Check-TamperChanges {
 
 function Invoke-ScanOnce {
     param([string[]]$Roots)
-
     $config = Load-Config
     $whitelist = Load-Whitelist
     $platform = Get-PlatformInfo
@@ -331,22 +304,71 @@ function Invoke-ScanOnce {
 
     Save-State -Data ([hashtable]$report)
     $currentTamper | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $script:TamperFile -Encoding UTF8
-
     Write-Log -Level 'INFO' -Message "Scan complete. Alerts=$($alerts.Count)"
     return [pscustomobject]$report
 }
 
+function Install-Sentinel {
+    $binDir = Join-Path $HOME '.local/bin'
+    New-Item -ItemType Directory -Force -Path $binDir | Out-Null
+
+    $scriptPath = $MyInvocation.MyCommand.Path
+    $launcherPath = Join-Path $binDir 'sentinel'
+    Copy-Item -LiteralPath $scriptPath -Destination $launcherPath -Force
+    
+    if (-not (Test-Path -LiteralPath $launcherPath)) {
+        throw 'Failed to install sentinel launcher.'
+    }
+
+    Initialize-Sentinel
+    Write-Log -Level 'INFO' -Message 'SENTINEL installed successfully'
+    Write-Host "[SENTINEL] Installed to $launcherPath"
+    Write-Host "[SENTINEL] Run: sentinel start"
+}
+
 function Start-Monitor {
-    param([string[]]$Roots)
+    param([string[]]$Roots, [switch]$StealthMode, [switch]$TuiMode)
 
     Initialize-Sentinel
     $config = Load-Config
     $roots = Get-DirectoryRoots -Additional $Roots
     Write-Log -Level 'INFO' -Message 'SENTINEL monitor started'
-    Write-Host "[$script:AppName] Monitor started. Press Ctrl+C to stop." -ForegroundColor Cyan
 
+    if ($TuiMode) {
+        while (-not (Test-Path -LiteralPath $script:StopFile)) {
+            $report = Invoke-ScanOnce -Roots $roots
+            Clear-Host
+            Write-Host '=== SENTINEL TUI ===' -ForegroundColor Cyan
+            Write-Host "Platform : $($report.platform)"
+            Write-Host "Termux   : $($report.isTermux)"
+            Write-Host "Admin    : $($report.isAdmin)"
+            Write-Host "Alerts   : $($report.alerts.Count)"
+            if ($report.alerts.Count -gt 0) {
+                Write-Host "Latest   : $($report.alerts[0])" -ForegroundColor Yellow
+            }
+            else {
+                Write-Host 'Latest   : No suspicious activity' -ForegroundColor Green
+            }
+            Start-Sleep -Milliseconds $config.TuiRefreshMs
+        }
+        Remove-Item -LiteralPath $script:StopFile -Force -ErrorAction SilentlyContinue
+        return
+    }
+
+    Write-Host "[$script:AppName] Monitor started. Press Ctrl+C to stop." -ForegroundColor Cyan
     while (-not (Test-Path -LiteralPath $script:StopFile)) {
         $report = Invoke-ScanOnce -Roots $roots
+
+        if ($StealthMode) {
+            if ($report.alerts.Count -gt 0) {
+                foreach ($alert in $report.alerts) {
+                    Write-Log -Level 'ALERT' -Message $alert
+                }
+            }
+            Start-Sleep -Seconds $config.ScanInterval
+            continue
+        }
+
         if ($report.alerts.Count -gt 0) {
             foreach ($alert in $report.alerts) {
                 Write-Host "[ALERT] $alert" -ForegroundColor Red
@@ -384,24 +406,27 @@ function Show-Status {
         else { Write-Host 'Alerts        : none' }
     }
     else {
-        Write-Host "[$script:AppName] No state file yet. Run 'pwsh -File sentinel.ps1 scan' first." 
+        Write-Host "[$script:AppName] No state file yet. Run 'pwsh -File sentinel.ps1 scan' first."
     }
 }
 
 function Show-Usage {
     @'
-SENTINEL - Local security monitor
+SENTINEL - Local Security Monitor
 
 Usage:
   pwsh -File sentinel.ps1 start
+  pwsh -File sentinel.ps1 stealth
+  pwsh -File sentinel.ps1 tui
   pwsh -File sentinel.ps1 scan
   pwsh -File sentinel.ps1 status
   pwsh -File sentinel.ps1 stop
+  pwsh -File sentinel.ps1 install
 
 Notes:
-  - Works offline and without any external server.
+  - Offline and local-only.
   - Compatible with PowerShell Core and Termux.
-  - Default scan roots: $HOME and current working directory.
+  - Logs are stored in ~/.sentinel/logs.
 '@ | Write-Host
 }
 
@@ -409,10 +434,13 @@ Initialize-Sentinel
 $roots = Get-DirectoryRoots -Additional $Path
 
 switch ($Command.ToLowerInvariant()) {
-    'start' { Start-Monitor -Roots $roots }
+    'start' { Start-Monitor -Roots $roots -StealthMode:$false }
     'scan' { $result = Invoke-ScanOnce -Roots $roots; $result | ConvertTo-Json -Depth 8 | Write-Host }
     'status' { Show-Status }
     'stop' { Stop-Monitor }
     'help' { Show-Usage }
+    'install' { Install-Sentinel }
+    'stealth' { Start-Monitor -Roots $roots -StealthMode:$true }
+    'tui' { Start-Monitor -Roots $roots -TuiMode }
     default { Show-Usage }
 }
