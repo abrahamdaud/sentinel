@@ -1,8 +1,10 @@
 # SENTINEL
 
-SENTINEL is a lightweight local security monitor designed for PowerShell and Termux. It runs completely offline and does not require any external server, API, or internet connection. The project is intended to monitor local system activity, detect suspicious processes, suspicious file patterns, and potential file tampering while staying low-overhead and non-intrusive.
+Offline Local Security Monitoring for PowerShell & Termux
 
-## Key Features
+SENTINEL is a lightweight local security monitor for PowerShell and Termux. It runs completely offline and does not require any external server, API, or internet connection. The project is designed to watch local activity, detect suspicious processes, suspicious file patterns, and changes in important files while staying low-overhead and quiet.
+
+## Features
 
 - Local process monitoring
 - Suspicious process detection
@@ -12,15 +14,15 @@ SENTINEL is a lightweight local security monitor designed for PowerShell and Ter
 - Whitelist support
 - Quiet stealth mode
 - Lightweight TUI dashboard
-- Local logging only
-- No external dependency
+- Local-only logging
+- No external service dependency
 
 ## Architecture
 
 - `sentinel.ps1` — PowerShell implementation
-- `sentinel-native.sh` — Bash fallback implementation
+- `sentinel-native.sh` — Bash fallback for Linux/Termux
 - `sentinel` — launcher
-- `install.sh` — installation and persistence setup
+- `install.sh` — installer and persistence setup
 
 ## Requirements
 
@@ -32,12 +34,10 @@ SENTINEL is a lightweight local security monitor designed for PowerShell and Ter
 ### Termux / Android
 
 - Termux installed
-- `pwsh` recommended for PowerShell mode
-- Native bash mode is also available
+- `pwsh` recommended
+- Native bash mode also available
 
 ## Installation
-
-From the project directory:
 
 ```bash
 chmod +x sentinel install.sh sentinel-native.sh
@@ -85,22 +85,22 @@ pwsh -File sentinel.ps1 stop
 SENTINEL is designed to be quiet:
 
 - minimal terminal output
-- logs saved locally only
-- alert only on meaningful changes
+- logs stored locally only
+- alerts only on meaningful changes
 - no external traffic
 - no cloud or API dependency
 
-The TUI is optimized for low overhead and fast refresh, aiming for smooth terminal updates without heavy CPU usage.
+The TUI is optimized for low-overhead and smooth terminal refresh without heavy CPU usage.
 
 ## Configuration
 
-Default configuration is generated under:
+All default configuration is generated automatically under:
 
 ```bash
 ~/.sentinel/
 ```
 
-Files generated:
+Files created:
 
 - `config.json`
 - `whitelist.txt`
@@ -110,25 +110,7 @@ Files generated:
 
 ## Startup Persistence
 
-On Linux and Termux environments with `crontab` available, the install step adds a lightweight `@reboot` cron entry to start SENTINEL automatically when the device boots.
-
-## Release Checklist
-
-Before publishing or release, verify the following:
-
-- Installer works on target system
-- PATH is configured correctly
-- `sentinel start` runs without errors
-- `sentinel status` shows valid state
-- `sentinel scan` performs a local scan correctly
-- `sentinel stop` stops the monitor cleanly
-- `whitelist.txt` works as expected
-- stealth mode stays quiet and minimal
-- TUI remains responsive and does not consume excessive CPU
-- logs are written locally
-- no internet or external service dependency exists
-- startup persistence works where supported
-- no unsupported commands are causing runtime issues
+On Linux and Termux environments with `crontab` available, the installer adds a lightweight `@reboot` cron entry to start SENTINEL automatically when the device boots.
 
 ## Notes
 
